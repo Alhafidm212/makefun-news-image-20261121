@@ -1,169 +1,249 @@
 #!/usr/bin/env python3
-"""Build the 21 Nov 2026 world-news front page, 1024x1024 PNG.
-Deterministic: fixed text, fixed geometry, no timestamps.
+"""Draw the news-image-20261121 front page (1024x1024 PNG) with Pillow.
 
-Stories (all first reported Saturday 21 Nov 2026, Reuters and wires):
-- Lead: the International Court of Justice rules 9-6 that Myanmar
-  committed genocide against the Rohingya in 2017, and orders an
-  investigation and compensation for survivors.
-- AI-led market selloff: the S&P 500 falls 3.7% into correction and
-  the Nasdaq 5.28%; the SEC examines Nvidia's accounting and its
-  shares fall 13.8%; Nikkei and Kospi drop more than 5%.
-- COP31 climate summit in Antalya misses its deadline; the draft
-  text drops any mention of fossil fuels.
-- A tanker is hit by a projectile off Khasab, Oman, and catches
-  fire in the Strait of Hormuz; no casualties.
-- Saudi-led strikes hit Hodeidah port in Yemen; Houthis say 41
-  dead, while the coalition says it downed three missiles aimed
-  at Riyadh.
-- UK and EU seal a Brussels deal scrapping most food and farm
-  checks, linking carbon markets, and opening youth mobility for
-  up to 100,000 under-30s on each side.
-- Phumzile Mlambo-Ngcuka, South Africa's first female deputy
-  president and former UN Women chief, dies aged 71.
+The page is a newspaper front page for Saturday 21 November 2026:
+masthead, lead story on the ICJ genocide ruling against Myanmar, a
+Peace Palace banner illustration, and six more stories of the day in a
+two-column grid. Fully deterministic: no network, no randomness, no
+clock. Run:  python3 build_image.py [output-path]
+
+Default output is entry.png next to this script.
 """
+
+import os
 import sys
+
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 1024, 1024
-PAPER = (246, 241, 231)
-INK = (17, 17, 17)
-RED = (166, 25, 46)
-GREY = (90, 86, 78)
-RULE = (60, 58, 52)
-NIGHT = (16, 24, 46)
-GOLD = (212, 168, 60)
-STONE = (58, 72, 104)
+WIDTH, HEIGHT = 1024, 1024
+MARGIN = 40
+CONTENT_W = WIDTH - 2 * MARGIN
 
-FD = "/usr/share/fonts/truetype/dejavu/"
-def font(name, size):
-    return ImageFont.truetype(FD + name, size)
+CREAM = (246, 240, 220)
+INK = (22, 22, 22)
+RED = (176, 32, 48)
+NAVY = (17, 23, 47)
+GOLD = (214, 176, 58)
+PALE_BLUE = (148, 158, 190)
+MID_BLUE = (110, 122, 158)
+GREY = (96, 96, 90)
 
-F_MAST = font("DejaVuSerif-Bold.ttf", 108)
-F_HEAD = font("DejaVuSerif-Bold.ttf", 54)
-F_KICK = font("DejaVuSans-Bold.ttf", 24)
-F_SUB = font("DejaVuSerif.ttf", 24)
-F_CELL_H = font("DejaVuSans-Bold.ttf", 25)
-F_CELL_B = font("DejaVuSans.ttf", 20)
-F_DATE = font("DejaVuSans-Bold.ttf", 22)
-F_FOOT = font("DejaVuSans.ttf", 18)
+FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 
-img = Image.new("RGB", (W, H), PAPER)
-d = ImageDraw.Draw(img)
-MX = 40
 
-def wrap(text, fnt, width_px):
-    words = text.split()
-    lines, cur = [], ""
-    for w in words:
-        t = (cur + " " + w).strip()
-        if d.textlength(t, font=fnt) <= width_px:
-            cur = t
-        else:
-            if cur:
-                lines.append(cur)
-            cur = w
-    if cur:
-        lines.append(cur)
+def load_font(name, size):
+    """Load a DejaVu font by file name, falling back to the default font."""
+    path = os.path.join(FONT_DIR, name)
+    try:
+        return ImageFont.truetype(path, size)
+    except (OSError, IOError):
+        return ImageFont.load_default()
+
+
+SERIF_BOLD = lambda s: load_font("DejaVuSerif-Bold.ttf", s)
+SERIF = lambda s: load_font("DejaVuSerif.ttf", s)
+SANS_BOLD = lambda s: load_font("DejaVuSans-Bold.ttf", s)
+SANS = lambda s: load_font("DejaVuSans.ttf", s)
+
+
+def wrap_text(draw, text, font, max_width):
+    """Split text into lines that fit max_width, breaking on word bounds."""
+    lines = []
+    for paragraph in text.split("\n"):
+        words = paragraph.split()
+        if not words:
+            lines.append("")
+            continue
+        line = words[0]
+        for word in words[1:]:
+            trial = line + " " + word
+            if draw.textlength(trial, font=font) <= max_width:
+                line = trial
+            else:
+                lines.append(line)
+                line = word
+        lines.append(line)
     return lines
 
-def rule(y, w=3):
-    d.line([(MX, y), (W - MX, y)], fill=RULE, width=w)
 
-# dateline bar
-y = 28
-d.text((MX, y), "SATURDAY, 21 NOVEMBER 2026", font=F_DATE, fill=INK)
-r = "WORLD NEWS - IN ONE IMAGE"
-d.text((W - MX - d.textlength(r, font=F_DATE), y), r, font=F_DATE, fill=RED)
-y = 64
-rule(y, 4)
-# masthead
-y = 74
-t = "THE WORLD"
-d.text(((W - d.textlength(t, font=F_MAST)) / 2, y), t, font=F_MAST, fill=INK)
-y = 188
-rule(y, 2)
-y = 198
-sub = "One day of world news, summed up in a single picture"
-d.text(((W - d.textlength(sub, font=F_SUB)) / 2, y), sub, font=F_SUB, fill=GREY)
+def draw_rule(draw, y, height=3, color=INK, x0=None, x1=None):
+    draw.rectangle(
+        [x0 if x0 is not None else MARGIN, y,
+         x1 if x1 is not None else WIDTH - MARGIN, y + height - 1],
+        fill=color,
+    )
 
-# lead story
-y = 232
-d.text((MX, y), "THE HAGUE  -  LEAD STORY", font=F_KICK, fill=RED)
-y = 264
-d.text((MX, y), "COURT RULES MYANMAR", font=F_HEAD, fill=INK)
-y = 328
-d.text((MX, y), "COMMITTED GENOCIDE", font=F_HEAD, fill=INK)
-y = 392
-lead = ("The International Court of Justice rules 9-6 that Myanmar committed "
+
+def draw_badge(draw, cx, cy, number, radius=17):
+    """Red circled story number with a white digit."""
+    draw.ellipse(
+        [cx - radius, cy - radius, cx + radius, cy + radius], fill=RED
+    )
+    font = SANS_BOLD(22)
+    label = str(number)
+    w = draw.textlength(label, font=font)
+    h = font.size
+    draw.text((cx - w / 2, cy - h / 2 - 2), label, font=font, fill=(255, 255, 255))
+
+
+def draw_palace_banner(draw, y0, y1):
+    """Night banner: starry navy sky with the Peace Palace and scales."""
+    draw.rectangle([MARGIN, y0, WIDTH - MARGIN, y1], fill=NAVY)
+    # Fixed stars, hand-placed so the sky is identical every run.
+    stars = [
+        (70, 522, 2), (150, 514, 1), (235, 528, 2), (330, 516, 1),
+        (420, 524, 2), (700, 518, 1), (790, 526, 2), (880, 514, 1),
+        (950, 528, 2), (120, 606, 1), (900, 606, 1), (640, 611, 1),
+        (290, 614, 1), (520, 514, 1), (760, 611, 2),
+    ]
+    for x, y, r in stars:
+        draw.ellipse([x - r, y - r, x + r, y + r], fill=(235, 235, 240))
+
+    cx = WIDTH // 2
+    base = y1
+    # Steps.
+    draw.rectangle([cx - 150, base - 12, cx + 150, base], fill=MID_BLUE)
+    draw.rectangle([cx - 125, base - 24, cx + 125, base - 12], fill=PALE_BLUE)
+    draw.rectangle([cx - 100, base - 36, cx + 100, base - 24], fill=MID_BLUE)
+    floor = base - 36
+    # Columns.
+    for off in (-78, -26, 26, 78):
+        draw.rectangle([cx + off - 11, floor - 62, cx + off + 11, floor],
+                       fill=PALE_BLUE)
+    # Entablature and golden pediment.
+    draw.rectangle([cx - 118, floor - 76, cx + 118, floor - 62], fill=PALE_BLUE)
+    draw.polygon(
+        [(cx - 118, floor - 76), (cx + 118, floor - 76), (cx, floor - 108)],
+        fill=GOLD,
+    )
+    # Scales of justice, centred on the palace front.
+    post_x = cx
+    post_top = floor - 58
+    draw.line([post_x, post_top, post_x, floor - 8], fill=GOLD, width=4)
+    beam_y = post_top + 8
+    draw.line([post_x - 62, beam_y, post_x + 62, beam_y], fill=GOLD, width=4)
+    draw.ellipse([post_x - 6, post_top - 6, post_x + 6, post_top + 6], fill=GOLD)
+    for end in (-62, 62):
+        pan_x = post_x + end
+        pan_y = beam_y + 30
+        draw.line([pan_x, beam_y, pan_x, pan_y], fill=GOLD, width=2)
+        draw.pieslice(
+            [pan_x - 20, pan_y - 4, pan_x + 20, pan_y + 20],
+            start=0, end=180, fill=GOLD,
+        )
+        draw.line([pan_x - 20, pan_y, pan_x + 20, pan_y], fill=GOLD, width=2)
+
+
+def draw_story(draw, x, y, number, headline, body, col_w):
+    """One numbered grid story: badge, bold headline, wrapped body."""
+    draw_badge(draw, x + 17, y + 14, number)
+    head_font = SANS_BOLD(25)
+    draw.text((x + 44, y), headline, font=head_font, fill=INK)
+    body_font = SANS(19)
+    lines = wrap_text(draw, body, body_font, col_w - 44)
+    ly = y + 33
+    for line in lines[:4]:
+        draw.text((x + 44, ly), line, font=body_font, fill=INK)
+        ly += 24
+    return ly
+
+
+def build(path):
+    img = Image.new("RGB", (WIDTH, HEIGHT), CREAM)
+    draw = ImageDraw.Draw(img)
+
+    # Dateline row.
+    date_font = SANS_BOLD(21)
+    draw.text((MARGIN, 26), "SATURDAY, 21 NOVEMBER 2026", font=date_font, fill=INK)
+    tag = "WORLD NEWS - IN ONE IMAGE"
+    tag_w = draw.textlength(tag, font=date_font)
+    draw.text((WIDTH - MARGIN - tag_w, 26), tag, font=date_font, fill=RED)
+    draw_rule(draw, 56, height=4)
+
+    # Masthead.
+    mast_font = SERIF_BOLD(118)
+    mast = "THE WORLD"
+    mw = draw.textlength(mast, font=mast_font)
+    draw.text(((WIDTH - mw) / 2, 66), mast, font=mast_font, fill=INK)
+    draw_rule(draw, 196, height=2)
+    sub_font = SERIF(24)
+    sub = "One day of world news, summed up in a single picture"
+    sw = draw.textlength(sub, font=sub_font)
+    draw.text(((WIDTH - sw) / 2, 206), sub, font=sub_font, fill=GREY)
+
+    # Lead story kicker + headline + deck.
+    kick_font = SANS_BOLD(23)
+    draw.text((MARGIN, 244), "THE HAGUE  -  LEAD STORY", font=kick_font, fill=RED)
+    head_font = SERIF_BOLD(60)
+    for i, line in enumerate(["COURT RULES MYANMAR", "COMMITTED GENOCIDE"]):
+        draw.text((MARGIN, 272 + i * 64), line, font=head_font, fill=INK)
+    deck_font = SERIF(26)
+    deck = (
+        "The International Court of Justice rules 9-6 that Myanmar committed "
         "genocide against the Rohingya in 2017, ordering an investigation and "
-        "compensation for survivors.")
-for ln in wrap(lead, F_SUB, W - 2 * MX):
-    d.text((MX, y), ln, font=F_SUB, fill=INK)
-    y += 29
+        "compensation for survivors."
+    )
+    dy = 404
+    for line in wrap_text(draw, deck, deck_font, CONTENT_W):
+        draw.text((MARGIN, dy), line, font=deck_font, fill=INK)
+        dy += 33
 
-# illustration band: the Peace Palace at The Hague, scales of justice
-by0, by1 = 486, 590
-d.rectangle([MX, by0, W - MX, by1], fill=NIGHT)
-# stars
-for sx, sy in ((90, 500), (180, 512), (300, 498), (420, 516), (560, 502),
-               (700, 514), (830, 500), (920, 520), (250, 530), (640, 530)):
-    d.ellipse([sx, sy, sx + 3, sy + 3], fill=(220, 225, 240))
-# courthouse: steps, columns, pediment
-d.rectangle([380, 578, 644, by1], fill=STONE)          # base step
-d.rectangle([396, 570, 628, 578], fill=STONE)          # step
-for cx in (408, 452, 496, 540, 584):
-    d.rectangle([cx, 528, cx + 20, 570], fill=(120, 134, 168))  # columns
-d.rectangle([396, 520, 628, 528], fill=(120, 134, 168))         # architrave
-d.polygon([(388, 520), (512, 492), (636, 520)], fill=GOLD)       # pediment
-d.ellipse([504, 496, 520, 512], fill=GOLD)                       # pediment disc
-# scales of justice, gold, centre of the band
-d.line([(512, 540), (512, 566)], fill=GOLD, width=4)             # pole
-d.line([(452, 544), (572, 544)], fill=GOLD, width=4)             # beam
-d.ellipse([508, 534, 516, 542], fill=GOLD)                       # finial
-for px in (452, 572):
-    d.line([(px, 544), (px - 14, 566)], fill=GOLD, width=2)
-    d.line([(px, 544), (px + 14, 566)], fill=GOLD, width=2)
-    d.chord([px - 16, 556, px + 16, 576], 0, 180, fill=GOLD)
-d.text((MX, by1 + 6), "The Peace Palace, The Hague, where the court gave its ruling. Illustration.",
-       font=F_FOOT, fill=GREY)
+    # Palace banner + caption.
+    draw_palace_banner(draw, 506, 622)
+    cap_font = SERIF(19)
+    draw.text(
+        (MARGIN, 630),
+        "The Peace Palace, The Hague, where the court gave its ruling. Illustration.",
+        font=cap_font, fill=GREY,
+    )
 
-# 2x3 grid of secondary stories (bodies kept to <=3 lines)
-cells = [
-    ("1", "MARKETS PLUNGE",
-     "AI-led selloff: S&P 500 falls 3.7% into correction, Nasdaq -5.28%; SEC probes Nvidia, shares -13.8%."),
-    ("2", "COP31 DEADLOCK",
-     "Climate summit in Antalya misses its deadline; the draft text drops any mention of fossil fuels."),
-    ("3", "TANKER ON FIRE",
-     "A tanker is hit by a projectile off Khasab, Oman, and catches fire in the Strait of Hormuz; no casualties."),
-    ("4", "YEMEN STRIKES",
-     "Saudi-led strikes hit Hodeidah port; Houthis say 41 dead, and the coalition downs missiles aimed at Riyadh."),
-    ("5", "UK-EU DEAL",
-     "Brussels deal scraps most food checks, links carbon markets and opens youth mobility for up to 100,000 a side."),
-    ("6", "OBITUARY",
-     "Phumzile Mlambo-Ngcuka, South Africa's first female deputy president and ex-UN Women chief, dies aged 71."),
-]
-gy = 626
-cw = (W - 2 * MX - 24) // 2
-ch = 110
-for i, (num, head, body) in enumerate(cells):
-    cx = MX + (i % 2) * (cw + 24)
-    cy = gy + (i // 2) * ch
-    d.ellipse([cx, cy + 2, cx + 34, cy + 36], fill=RED)
-    tw = d.textlength(num, font=F_CELL_H)
-    d.text((cx + (34 - tw) / 2, cy + 5), num, font=F_CELL_H, fill=(255, 255, 255))
-    d.text((cx + 44, cy + 4), head, font=F_CELL_H, fill=INK)
-    by = cy + 36
-    for ln in wrap(body, F_CELL_B, cw - 44):
-        d.text((cx + 44, by), ln, font=F_CELL_B, fill=(40, 40, 40))
-        by += 24
+    # Six stories, two columns x three rows.
+    stories = [
+        (1, "MARKETS PLUNGE",
+         "AI-led selloff: S&P 500 falls 3.7% into correction, Nasdaq -5.28%; "
+         "SEC probes Nvidia, shares -13.8%."),
+        (2, "COP31 DEADLOCK",
+         "Climate summit in Antalya misses its deadline; the draft text drops "
+         "any mention of fossil fuels."),
+        (3, "TANKER ON FIRE",
+         "A tanker is hit by a projectile off Khasab, Oman, and catches fire "
+         "in the Strait of Hormuz; no casualties."),
+        (4, "YEMEN STRIKES",
+         "Saudi-led strikes hit Hodeidah port; Houthis say 41 dead, and the "
+         "coalition downs missiles aimed at Riyadh."),
+        (5, "UK-EU DEAL",
+         "Brussels deal scraps most food checks, links carbon markets and "
+         "opens youth mobility for up to 100,000 a side."),
+        (6, "OBITUARY",
+         "Phumzile Mlambo-Ngcuka, South Africa's first female deputy "
+         "president and ex-UN Women chief, dies aged 71."),
+    ]
+    col_w = (CONTENT_W - 40) // 2
+    row_y = [668, 780, 892]
+    for idx, (number, headline, body) in enumerate(stories):
+        col = idx % 2
+        row = idx // 2
+        x = MARGIN + col * (col_w + 40)
+        draw_story(draw, x, row_y[row], number, headline, body, col_w)
 
-# footer
-fy = 626 + 3 * ch + 4
-rule(fy, 2)
-d.text((MX, fy + 8), "Compiled from Reuters and other wires - 21 Nov 2026 - make.fun news-image-20261121",
-       font=F_FOOT, fill=GREY)
+    # Footer.
+    draw_rule(draw, 972, height=2)
+    foot_font = SANS(17)
+    draw.text(
+        (MARGIN, 982),
+        "Compiled from Reuters and other wires - 21 Nov 2026 - make.fun news-image-20261121",
+        font=foot_font, fill=GREY,
+    )
 
-out = sys.argv[1] if len(sys.argv) > 1 else "entry.png"
-img.save(out, "PNG", optimize=True)
-print("saved", out)
+    img.save(path, format="PNG")
+    size = os.path.getsize(path)
+    if size > 1 << 20:
+        raise SystemExit("error: saved image is %d bytes, over the 1 MiB limit" % size)
+    return path
+
+
+if __name__ == "__main__":
+    here = os.path.dirname(os.path.abspath(__file__))
+    out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "entry.png")
+    build(out)
+    print("wrote", out)
